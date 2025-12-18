@@ -1,0 +1,73 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  username String @unique
+  password  String   // Stores hashed password
+  name      String
+  role      Role     @default(PASSENGER)
+  createdAt DateTime @default(now())
+  
+  queueEntries QueueEntry[]
+}
+
+model Flight {
+  id            String   @id @default(uuid())
+  flightCode    String   @unique
+  destination   String
+  departureTime DateTime
+  status        String   @default("SCHEDULED") 
+  
+  queueEntries QueueEntry[]
+}
+
+model QueueEntry {
+  id        String      @id @default(uuid())
+  userId    String
+  flightId  String
+  status    QueueStatus @default(WAITING)
+  
+  // Priority Algo Fields
+  priorityScore Int       @default(0)
+  ticketClass   TicketClass @default(ECONOMY)
+  isSpecialNeeds Boolean  @default(false)
+  
+  joinedAt  DateTime @default(now())
+  
+  // [NEW] Timestamps for Smart Metrics
+  serviceStartedAt   DateTime? // When Admin clicked "Call Next"
+  serviceCompletedAt DateTime? // When Admin clicked "Call Next" for the person AFTER this one
+
+  user   User   @relation(fields: [userId], references: [id])
+  flight Flight @relation(fields: [flightId], references: [id])
+
+  @@index([status, priorityScore])
+}
+
+enum Role {
+  PASSENGER
+  ADMIN
+  STAFF
+}
+
+enum QueueStatus {
+  WAITING
+  CALLED
+  SERVING
+  COMPLETED
+  CANCELLED
+}
+
+enum TicketClass {
+  ECONOMY
+  BUSINESS
+  FIRST
+}
