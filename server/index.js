@@ -1,7 +1,4 @@
-/**
- * Virtual Queue Management System - Backend (Final Integrated Version)
- * Features: Auth, Priority Algo (Smart), Smart Metrics, Simulation, Stakeholder Mgmt
- */
+// Virtual Queue Management System - Backend
 
 const express = require('express');
 const http = require('http');
@@ -13,12 +10,10 @@ const jwt = require('jsonwebtoken');
 const { authenticateToken, requireAdmin } = require('./middleware/auth');
 require('dotenv').config();
 
-// Initialize System
 const app = express();
 const server = http.createServer(app);
 const prisma = new PrismaClient();
 
-// Socket.io Setup with CORS
 const io = new Server(server, {
   cors: { 
     origin: "*", 
@@ -26,45 +21,35 @@ const io = new Server(server, {
   }
 });
 
-// Middleware
 app.use(cors());
 app.use(express.json());
 
 const SECRET_KEY = process.env.JWT_SECRET || "fallback-secret-key";
 
-// --- SMART UTILITIES ---
+/* Priority Calculation Utilities */
 
-/**
- * INTELLIGENT PRIORITY ALGORITHM
- * 1. Base Class (Economy/Business/First)
- * 2. Needs (Accessibility)
- * 3. Aging (Wait Time)
- * 4. Urgency (Time to Departure) - NEW!
- */
+// Calculates a priority score based on ticket class, accessibility needs, wait time, and flight departure urgency.
 const calculatePriorityScore = (ticketClass, isSpecialNeeds, joinedAt, departureTime) => {
   let score = 0;
   
-  // 1. Base Score
+  // Base score determined by ticket class
   if (ticketClass === 'FIRST') score += 500;
   else if (ticketClass === 'BUSINESS') score += 300;
   else score += 100;
 
-  // 2. Special Needs
+  // Accessibility adjustment
   if (isSpecialNeeds) score += 400;
 
-  // 3. Dynamic Aging: Score increases by 2 points every minute you wait
+  // Wait time adjustment: Score increases by 2 points per minute
   const now = new Date();
   const waitTimeMinutes = (now - new Date(joinedAt)) / 60000;
   score += Math.floor(waitTimeMinutes * 2);
 
-  // 4. "Smart" Urgency Factor (AI Heuristic)
-  // If flight departs in < 90 mins, urgency drastically increases score
+  // Urgency adjustment: Increase score if flight departs within 90 minutes
   if (departureTime) {
       const minutesToDeparture = (new Date(departureTime) - now) / 60000;
       
       if (minutesToDeparture > 0 && minutesToDeparture < 90) {
-          // Non-linear boost: The closer to departure, the higher the score
-          // e.g. 10 mins left = (90 - 10) * 10 = +800 points (jumps to front)
           score += Math.floor((90 - minutesToDeparture) * 10);
       }
   }
@@ -72,7 +57,7 @@ const calculatePriorityScore = (ticketClass, isSpecialNeeds, joinedAt, departure
   return score;
 };
 
-// 2. Smart Metric: Real-Time Service Rate
+// Calculate average service time based on the last 10 completed entries
 async function getAverageServiceTime(flightId) {
   const completed = await prisma.queueEntry.findMany({
     where: { flightId, status: 'COMPLETED' },
@@ -93,7 +78,7 @@ async function getAverageServiceTime(flightId) {
   return Math.ceil(avgMs / 60000); 
 }
 
-// --- AUTHENTICATION ROUTES ---
+/* Authentication Routes */
 
 app.post('/api/auth/register', async (req, res) => {
   const { username, email, password, name } = req.body;
@@ -169,7 +154,7 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-// --- STAKEHOLDER MGMT (Flights) ---
+/* Flight Management Routes */
 
 app.post('/api/admin/flights', authenticateToken, requireAdmin, async (req, res) => {
   const { flightCode, destination, departureTime } = req.body;
@@ -198,7 +183,7 @@ app.get('/api/flights', async (req, res) => {
   }
 });
 
-// --- QUEUE ROUTES ---
+/* Queue Management Routes */
 
 app.post('/api/queue/join', authenticateToken, async (req, res) => {
   try {
@@ -210,11 +195,9 @@ app.post('/api/queue/join', authenticateToken, async (req, res) => {
     });
     if (existing) return res.status(400).json({ error: "Already in queue" });
 
-    // FIX: Fetch flight to get departure time for algorithm
     const flight = await prisma.flight.findUnique({ where: { id: flightId } });
     if (!flight) return res.status(404).json({ error: "Flight not found" });
 
-    // Calculate Score with Urgency
     const initialScore = calculatePriorityScore(
         ticketClass, 
         isSpecialNeeds, 
@@ -266,10 +249,9 @@ app.get('/api/queue/status', authenticateToken, async (req, res) => {
       }
     });
 
-    // Predictive Wait Time Calculation
     const avgServiceTime = await getAverageServiceTime(myEntry.flightId);
     
-    // Traffic Factor: If queue > 10, assume 20% efficiency loss due to congestion
+    // Adjust predicted wait time based on queue length congestion
     const totalQueue = await prisma.queueEntry.count({ where: { flightId: myEntry.flightId, status: 'WAITING' }});
     const trafficFactor = totalQueue > 10 ? 1.2 : 1.0;
 
@@ -290,7 +272,8 @@ app.get('/api/queue/status', authenticateToken, async (req, res) => {
   }
 });
 
-// --- ADMIN OPERATIONS ---
+/* Admin Operations */
+
 app.get('/api/admin/queue/:flightId', authenticateToken, requireAdmin, async (req, res) => {
   const { flightId } = req.params;
   
@@ -313,7 +296,7 @@ app.get('/api/admin/queue/:flightId', authenticateToken, requireAdmin, async (re
   }
 });
 
-// CALL NEXT (Updated to save counterId to DB)
+// Assign next passenger to a counter
 app.post('/api/admin/call-next', authenticateToken, requireAdmin, async (req, res) => {
   const { flightId, counterId } = req.body;
 
@@ -327,12 +310,11 @@ app.post('/api/admin/call-next', authenticateToken, requireAdmin, async (req, re
     return res.status(200).json({ message: "Queue is empty" });
   }
 
-  // UPDATE DB WITH COUNTER ID
   const updated = await prisma.queueEntry.update({
     where: { id: nextPassenger.id },
     data: { 
       status: 'CALLED', 
-      assignedCounter: counterId, // <--- SAVING TO DB
+      assignedCounter: counterId,
       serviceStartedAt: new Date() 
     },
     include: { user: true }
@@ -350,7 +332,6 @@ app.post('/api/admin/call-next', authenticateToken, requireAdmin, async (req, re
   res.json({ success: true, passenger: updated });
 });
 
-// COMPLETE SERVICE
 app.post('/api/admin/complete-service', authenticateToken, requireAdmin, async (req, res) => {
   const { entryId } = req.body;
 
@@ -359,7 +340,7 @@ app.post('/api/admin/complete-service', authenticateToken, requireAdmin, async (
       where: { id: entryId },
       data: { 
         status: 'COMPLETED',
-        assignedCounter: null, // Clear the counter
+        assignedCounter: null,
         serviceCompletedAt: new Date() 
       }
     });
@@ -378,9 +359,9 @@ app.post('/api/admin/noshow', authenticateToken, requireAdmin, async (req, res) 
     await prisma.queueEntry.update({
       where: { id: entryId },
       data: { 
-        status: 'NOSHOW', // distinct status
-        assignedCounter: null, // clear counter
-        serviceCompletedAt: new Date() // mark end time
+        status: 'NOSHOW',
+        assignedCounter: null,
+        serviceCompletedAt: new Date()
       }
     });
 
@@ -391,7 +372,7 @@ app.post('/api/admin/noshow', authenticateToken, requireAdmin, async (req, res) 
   }
 });
 
-// --- SIMULATION ENGINE ---
+/* Simulation and Testing */
 
 app.post('/api/admin/simulate', authenticateToken, requireAdmin, async (req, res) => {
   const { flightId, count = 5 } = req.body;
@@ -404,7 +385,6 @@ app.post('/api/admin/simulate', authenticateToken, requireAdmin, async (req, res
   };
 
   try {
-    // Fetch flight to get departure time
     const flight = await prisma.flight.findUnique({ where: { id: flightId } });
     if (!flight) return res.status(404).json({ error: "Flight not found for sim" });
 
@@ -423,7 +403,6 @@ app.post('/api/admin/simulate', authenticateToken, requireAdmin, async (req, res
         }
       });
 
-      // Use Smart Priority Calculation
       const score = calculatePriorityScore(
           ticketClass, 
           isSpecialNeeds, 
@@ -460,6 +439,5 @@ app.post('/api/admin/reset', authenticateToken, requireAdmin, async (req, res) =
   res.json({ success: true });
 });
 
-// --- SERVER START ---
 const PORT = process.env.PORT || 3001;
-server.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
