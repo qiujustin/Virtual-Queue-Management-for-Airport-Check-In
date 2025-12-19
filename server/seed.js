@@ -4,15 +4,15 @@ const bcrypt = require('bcryptjs');
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log("🌱 Starting seed...");
+  console.log("Starting database seed...");
 
-  // 1. Clean Database (Optional: remove if you want to keep data)
+  // Clear existing data
   await prisma.queueEntry.deleteMany();
   await prisma.user.deleteMany();
   await prisma.flight.deleteMany();
 
-  // 2. Create Admin User
-  const hashedPassword = await bcrypt.hash("admin123", 10); // Password is "admin123"
+  // Create Admin User
+  const hashedPassword = await bcrypt.hash("admin123", 10);
   
   const admin = await prisma.user.create({
     data: {
@@ -23,9 +23,9 @@ async function main() {
       role: "ADMIN"
     }
   });
-  console.log(`✅ Created Admin: ${admin.username} (Password: admin123)`);
+  console.log(`Created Admin: ${admin.username}`);
 
-  // 3. Create Sample Flight
+  // Create Sample Flight
   const flight = await prisma.flight.create({
     data: {
       flightCode: "MH370",
@@ -34,7 +34,7 @@ async function main() {
       status: "SCHEDULED"
     }
   });
-  console.log(`✅ Created Flight: ${flight.flightCode}`);
+  console.log(`Created Flight: ${flight.flightCode}`);
 }
 
 main()

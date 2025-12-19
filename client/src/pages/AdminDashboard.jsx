@@ -7,11 +7,10 @@ import QueueAnalytics from '../components/QueueAnalytics';
 
 const socket = io('http://localhost:3001');
 
-// Initial Counters Configuration
 const INITIAL_COUNTERS = [
-  { id: 'Counter 1', status: 'IDLE', currentPassenger: null },
-  { id: 'Counter 2', status: 'IDLE', currentPassenger: null },
-  { id: 'Counter 3', status: 'IDLE', currentPassenger: null },
+  { id: 'Counter 01', status: 'IDLE', currentPassenger: null },
+  { id: 'Counter 02', status: 'IDLE', currentPassenger: null },
+  { id: 'Counter 03', status: 'IDLE', currentPassenger: null },
 ];
 
 export default function AdminDashboard() {
@@ -19,9 +18,7 @@ export default function AdminDashboard() {
   const [flights, setFlights] = useState([]);
   const [queueList, setQueueList] = useState([]);
   const [counters, setCounters] = useState(INITIAL_COUNTERS);
-  const [metrics, setMetrics] = useState({ queueLength: 0, avgWaitTime: 0, priorityCount: 0 });
   
-  // Automation & Loading States
   const [isAutoMode, setIsAutoMode] = useState(false);
   const [simLoading, setSimLoading] = useState(false);
   const isProcessingRef = useRef(false); 
@@ -34,7 +31,6 @@ export default function AdminDashboard() {
     return { headers: { Authorization: `Bearer ${token}` } };
   };
 
-  // 1. Fetch Flights
   const refreshFlights = () => {
     axios.get('http://localhost:3001/api/flights').then(res => {
       setFlights(res.data);
@@ -44,7 +40,6 @@ export default function AdminDashboard() {
     });
   };
 
-  // 2. Fetch Queue & Sync Counters (PERSISTENCE LOGIC)
   const refreshQueueData = useCallback(() => {
     if (!flightId) return;
 
@@ -53,11 +48,8 @@ export default function AdminDashboard() {
         const data = res.data;
         setQueueList(data);
 
-        // --- COUNTER SYNC LOGIC ---
-        // 1. Find passengers who are currently 'CALLED'
         const servingPassengers = data.filter(p => p.status === 'CALLED');
         
-        // 2. Map them to the correct counter using the DB field 'assignedCounter'
         setCounters(prevCounters => {
           return prevCounters.map(counter => {
             const assignedPassenger = servingPassengers.find(p => p.assignedCounter === counter.id);
@@ -71,19 +63,12 @@ export default function AdminDashboard() {
         });
       })
       .catch(err => console.error("Queue fetch error", err));
-
-    // Refresh Metrics
-    axios.get(`http://localhost:3001/api/admin/metrics/${flightId}`, getAuthHeader())
-      .then(res => setMetrics(res.data))
-      .catch(err => console.error("Metrics fetch error", err));
   }, [flightId]);
 
-  // Initial Load
   useEffect(() => {
     refreshFlights();
   }, []);
 
-  // Socket Listener
   useEffect(() => {
     refreshQueueData();
     const handleUpdate = () => { refreshQueueData(); };
@@ -91,17 +76,15 @@ export default function AdminDashboard() {
     return () => { socket.off('queue_update', handleUpdate); };
   }, [refreshQueueData]);
 
-  // --- ACTIONS ---
-
   const handleAddFlight = async (e) => {
     e.preventDefault();
     try {
       await axios.post('http://localhost:3001/api/admin/flights', newFlight, getAuthHeader());
-      toast.success("Flight Created");
+      toast.success("Flight Schedule Published");
       setNewFlight({ flightCode: '', destination: '', departureTime: '' });
       refreshFlights();
     } catch (err) {
-      toast.error("Error creating flight");
+      toast.error("Error creating flight schedule");
     }
   };
 
@@ -117,17 +100,16 @@ export default function AdminDashboard() {
       }, getAuthHeader());
 
       if (res.data.message === "Queue is empty") {
-        if (!isAutoMode) toast("No passengers waiting");
+        if (!isAutoMode) toast("Queue is currently empty");
         return;
       }
 
-      // Optimistic UI Update
       const servedPassenger = res.data.passenger;
       const updatedCounters = [...counters];
       updatedCounters[counterIndex] = { ...counter, status: 'BUSY', currentPassenger: servedPassenger };
       setCounters(updatedCounters);
 
-      if (!isAutoMode) toast.success(`${counter.id} serving ${servedPassenger.user.name}`);
+      if (!isAutoMode) toast.success(`${counter.id} summoning: ${servedPassenger.user.name}`);
       
     } catch (err) {
       console.error(err);
@@ -145,24 +127,21 @@ export default function AdminDashboard() {
         entryId: counter.currentPassenger.id 
       }, getAuthHeader());
 
-      // Local cleanup (Socket will confirm later)
       const updatedCounters = [...counters];
       updatedCounters[counterIndex] = { ...counter, status: 'IDLE', currentPassenger: null };
       setCounters(updatedCounters);
-      if (!isAutoMode) toast.success(`${counter.id} free`);
+      if (!isAutoMode) toast.success(`${counter.id} marked available`);
 
     } catch (err) {
-      toast.error("Error completing service");
+      toast.error("Failed to complete transaction");
     }
   };
 
-  // --- NEW: NO SHOW HANDLER ---
   const handleNoShow = async (counterIndex) => {
     const counter = counters[counterIndex];
     if (!counter.currentPassenger) return;
 
-    // Optional: Confirmation
-    if (!isAutoMode && !window.confirm("Mark passenger as NO-SHOW?")) return;
+    if (!isAutoMode && !window.confirm("Confirm mark passenger as NO-SHOW?")) return;
 
     try {
       await axios.post('http://localhost:3001/api/admin/noshow', { 
@@ -173,33 +152,28 @@ export default function AdminDashboard() {
       updatedCounters[counterIndex] = { ...counter, status: 'IDLE', currentPassenger: null };
       setCounters(updatedCounters);
       
-      if (!isAutoMode) toast.error(`${counter.id}: Passenger marked Absent`);
+      if (!isAutoMode) toast.error(`${counter.id}: Passenger marked absent`);
 
     } catch (err) {
-      toast.error("Error marking No-Show");
+      toast.error("Failed to process No-Show");
     }
   };
 
   const handleSimulate = async (count) => {
-    if (!flightId) return toast.error("Select a flight");
+    if (!flightId) return toast.error("Select active flight first");
     setSimLoading(true);
     try {
       await axios.post('http://localhost:3001/api/admin/simulate', { flightId, count }, getAuthHeader());
-      toast.success(`Generated ${count} Passengers`);
+      toast.success(`Injected ${count} simulated passengers`);
     } catch (err) { toast.error("Simulation failed"); }
     finally { setSimLoading(false); }
   };
 
-  // --- AUTO-PILOT ENGINE ---
   useEffect(() => {
     if (!isAutoMode) return;
-
     const interval = setInterval(() => {
-      // 1. Are there waiting passengers?
       const waitingCount = queueList.filter(p => p.status === 'WAITING').length;
       if (waitingCount === 0) return;
-
-      // 2. Is there an idle counter?
       if (isProcessingRef.current) return; 
 
       const idleIndex = counters.findIndex(c => c.status === 'IDLE');
@@ -207,7 +181,6 @@ export default function AdminDashboard() {
         handleCallPassenger(idleIndex);
       }
     }, 2000); 
-
     return () => clearInterval(interval);
   }, [isAutoMode, counters, queueList]);
 
@@ -217,144 +190,144 @@ export default function AdminDashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 p-6">
-      <div className="max-w-7xl mx-auto">
+    <div className="min-h-screen bg-slate-100 p-6 font-sans">
+      <div className="max-w-[1400px] mx-auto">
         
-        {/* Header */}
-        <div className="flex flex-col md:flex-row justify-between items-center bg-white p-6 rounded-lg shadow-sm mb-8 gap-4">
-          <h1 className="text-3xl font-bold text-slate-800">Admin Operations Center</h1>
-          <div className="flex items-center gap-4">
-            <div className={`flex items-center gap-2 px-4 py-2 rounded-full cursor-pointer transition ${isAutoMode ? 'bg-green-100' : 'bg-slate-200'}`}
+        {/* Professional Header */}
+        <div className="flex flex-col xl:flex-row justify-between items-center bg-white p-6 rounded-xl shadow-sm mb-8 gap-6 border-t-4 border-sky-700">
+          <div>
+             <h1 className="text-3xl font-black text-slate-800 uppercase tracking-tight">Terminal Operations Control</h1>
+             <p className="text-slate-500 font-medium">System Administrator Dashboard</p>
+          </div>
+         
+          <div className="flex flex-wrap items-center gap-4 bg-slate-50 p-3 rounded-lg border border-slate-200">
+             {/* Styled Toggle Switch */}
+            <div className={`flex items-center gap-3 px-4 py-2 rounded-md cursor-pointer transition-all border ${isAutoMode ? 'bg-emerald-50 border-emerald-300' : 'bg-slate-200 border-slate-300'}`}
                  onClick={() => setIsAutoMode(!isAutoMode)}>
-              <div className={`w-4 h-4 rounded-full ${isAutoMode ? 'bg-green-600 animate-pulse' : 'bg-slate-400'}`}></div>
-              <span className={`text-sm font-bold ${isAutoMode ? 'text-green-800' : 'text-slate-600'}`}>
-                {isAutoMode ? "AUTO-PILOT ON" : "MANUAL MODE"}
+              <div className="relative w-12 h-6 bg-slate-300 rounded-full shadow-inner transition-colors" style={{backgroundColor: isAutoMode ? '#10b981' : '#cbd5e1'}}>
+                  <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow transition-transform transform ${isAutoMode ? 'translate-x-6' : 'translate-x-0'}`}></div>
+              </div>
+              <span className={`text-sm font-bold uppercase tracking-wider ${isAutoMode ? 'text-emerald-700' : 'text-slate-600'}`}>
+                Auto-Assign: {isAutoMode ? "ON" : "OFF"}
               </span>
             </div>
-            <select className="border border-slate-300 rounded p-2 min-w-[200px]" value={flightId} onChange={(e) => setFlightId(e.target.value)}>
-              {flights.map(f => <option key={f.id} value={f.id}>{f.flightCode} ({f.destination})</option>)}
+
+            <select className="border border-slate-300 bg-white rounded-md px-3 py-2 font-bold text-slate-700 focus:ring-2 focus:ring-sky-500 outline-none min-w-[220px]" value={flightId} onChange={(e) => setFlightId(e.target.value)}>
+              {flights.map(f => <option key={f.id} value={f.id}>Flight {f.flightCode} ({f.destination})</option>)}
             </select>
-            <button onClick={handleLogout} className="bg-red-50 text-red-600 px-4 py-2 rounded font-bold h-[42px]">Logout</button>
+            <button onClick={handleLogout} className="bg-white text-red-600 hover:bg-red-50 border border-red-200 px-6 py-2 rounded-md font-bold transition shadow-sm">End Session</button>
           </div>
         </div>
 
         <QueueAnalytics queueList={queueList} />
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
           
-          <div className="lg:col-span-2 space-y-6">
-            <h2 className="text-xl font-bold text-slate-700">Check-In Counters</h2>
+          <div className="xl:col-span-2 space-y-8">
+            <h2 className="text-xl font-bold text-slate-800 uppercase tracking-wide flex items-center gap-2"><span className="text-sky-600">●</span> Service Counters Status</h2>
             
-            {/* FIXED COUNTER GRID */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {counters.map((counter, index) => (
+              {counters.map((counter, index) => {
+                const isBusy = counter.status === 'BUSY';
+                return (
                 <div key={counter.id} 
-                  className={`relative p-5 rounded-2xl border-2 transition-all shadow-md flex flex-col justify-between min-h-[220px] ${
-                  counter.status === 'BUSY' ? 'border-orange-200 bg-orange-50' : 'border-green-200 bg-white hover:border-green-300'
+                  className={`relative rounded-xl border-2 transition-all shadow-md flex flex-col justify-between overflow-hidden ${
+                  isBusy ? 'border-amber-400 bg-gradient-to-b from-amber-50 to-white' : 'border-emerald-400 bg-gradient-to-b from-emerald-50 to-white'
                 }`}>
                   
-                  {/* Card Header */}
-                  <div className="flex justify-between items-start mb-4">
-                    <span className="font-black text-slate-700 text-lg">{counter.id}</span>
-                    <span className={`text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wide ${
-                      counter.status === 'BUSY' ? 'bg-orange-200 text-orange-900' : 'bg-green-100 text-green-800'
-                    }`}>
-                      {counter.status}
+                  <div className={`p-4 flex justify-between items-center ${isBusy ? 'bg-amber-400 text-amber-950' : 'bg-emerald-400 text-emerald-950'}`}>
+                    <span className="font-black text-lg uppercase">{counter.id}</span>
+                    <span className="text-xs font-extrabold uppercase tracking-widest bg-white/30 px-2 py-1 rounded">
+                      {isBusy ? 'Occupied' : 'Available'}
                     </span>
                   </div>
 
-                  {/* Card Content */}
-                  <div className="flex-grow flex items-center justify-center mb-4">
-                    {counter.status === 'BUSY' ? (
-                      <div className="text-center w-full bg-white p-4 rounded-xl border border-orange-100 shadow-sm">
-                        <div className="text-xs text-slate-400 font-bold mb-1 tracking-wider uppercase">Now Serving</div>
-                        <div className="font-bold text-slate-800 text-lg truncate mb-1">
-                          {counter.currentPassenger?.user?.name || "Unknown"}
+                  <div className="flex-grow flex items-center justify-center p-6 min-h-[150px]">
+                    {isBusy ? (
+                      <div className="text-center w-full">
+                        <div className="text-xs text-amber-700 font-bold mb-2 tracking-wider uppercase">Currently Processing Passenger</div>
+                        <div className="font-black text-slate-800 text-xl truncate mb-2 py-1 px-2 bg-white rounded border border-amber-200 shadow-sm">
+                          {counter.currentPassenger?.user?.name}
                         </div>
-                        <div className="text-xs text-indigo-600 font-bold bg-indigo-50 inline-block px-2 py-1 rounded">
+                        <div className="inline-block bg-amber-100 text-amber-800 text-xs font-bold px-3 py-1 rounded-full uppercase">
                           Priority Score: {counter.currentPassenger?.priorityScore}
                         </div>
                       </div>
                     ) : (
-                      <div className="text-center text-slate-400">
-                        <div className="text-4xl mb-2">🟢</div>
-                        <span className="text-sm font-medium">Ready for next passenger</span>
+                      <div className="text-center text-emerald-600 opacity-70">
+                        <div className="text-5xl mb-2">🟢</div>
+                        <span className="text-sm font-bold uppercase tracking-wide">Ready for Assignment</span>
                       </div>
                     )}
                   </div>
 
-                  {/* Card Actions (Fixed at bottom) */}
-                  <div className="w-full">
-                    {counter.status === 'BUSY' ? (
-                      <div className="flex gap-2">
+                  <div className="p-4 bg-slate-50 border-t border-slate-100">
+                    {isBusy ? (
+                      <div className="flex gap-3">
                         <button 
                           onClick={() => handleCompleteService(index)}
-                          className="flex-1 bg-slate-800 hover:bg-slate-900 text-white text-sm py-3 rounded-lg font-bold transition shadow-sm"
+                          className="flex-1 bg-slate-800 hover:bg-slate-900 text-white text-sm py-3 rounded-lg font-bold transition shadow-sm uppercase tracking-wide"
                         >
-                          ✅ Done
+                          Complete Service
                         </button>
                         <button 
                           onClick={() => handleNoShow(index)}
-                          className="flex-1 bg-white border border-red-200 hover:bg-red-50 text-red-600 text-sm py-3 rounded-lg font-bold transition shadow-sm"
+                          className="flex-1 bg-white border-2 border-red-200 hover:bg-red-50 text-red-700 text-sm py-3 rounded-lg font-bold transition shadow-sm uppercase tracking-wide"
                         >
-                          ❌ Absent
+                          Mark No-Show
                         </button>
                       </div>
                     ) : (
                       <button 
                         onClick={() => handleCallPassenger(index)}
                         disabled={queueList.filter(p => p.status === 'WAITING').length === 0 || isAutoMode}
-                        className="w-full bg-green-600 hover:bg-green-700 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white text-sm py-3 rounded-lg font-bold shadow-md active:scale-95 transition flex items-center justify-center gap-2"
+                        className="w-full bg-sky-600 hover:bg-sky-700 disabled:bg-slate-300 disabled:text-slate-500 disabled:cursor-not-allowed text-white text-sm py-4 rounded-lg font-black shadow-md active:scale-[0.98] transition uppercase tracking-widest flex items-center justify-center gap-2"
                       >
-                        {isAutoMode ? "Auto-Pilot Active..." : (
-                          <><span>📢</span> Call Next</>
-                        )}
+                        {isAutoMode ? "Auto-Assignment Active" : "Summon Next Passenger"}
                       </button>
                     )}
                   </div>
-
                 </div>
-              ))}
+              )})}
             </div>
 
-            {/* Waiting List Table (Unchanged logic, just styling polish) */}
-            <div className="bg-white rounded-lg shadow overflow-hidden mt-8 border border-slate-100">
-              <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex justify-between items-center">
-                <h3 className="font-bold text-slate-700">Waiting Room</h3>
-                <span className="text-xs font-bold bg-slate-200 text-slate-600 px-2 py-1 rounded-full">
-                  {queueList.filter(p => p.status === 'WAITING').length} Waiting
+            <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-slate-200">
+              <div className="bg-slate-100 px-6 py-4 border-b border-slate-200 flex justify-between items-center">
+                <h3 className="font-bold text-slate-700 uppercase tracking-wide text-sm">Waitlist Manifest</h3>
+                <span className="text-xs font-black bg-sky-100 text-sky-700 px-3 py-1 rounded-full uppercase">
+                  {queueList.filter(p => p.status === 'WAITING').length} Pending
                 </span>
               </div>
-              <div className="max-h-[400px] overflow-y-auto">
-                <table className="w-full text-left">
-                  <thead className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider sticky top-0">
+              <div className="max-h-[450px] overflow-y-auto relative">
+                <table className="w-full text-left border-collapse">
+                  <thead className="bg-slate-50 text-slate-500 text-xs font-bold uppercase tracking-wider sticky top-0 shadow-sm z-10">
                     <tr>
-                      <th className="p-4">Pos</th>
-                      <th className="p-4">Name</th>
-                      <th className="p-4">Ticket</th>
-                      <th className="p-4">Score</th>
-                      <th className="p-4">Status</th>
+                      <th className="p-4 bg-slate-50">Seq.</th>
+                      <th className="p-4 bg-slate-50">Passenger Name</th>
+                      <th className="p-4 bg-slate-50">Ticket Type</th>
+                      <th className="p-4 bg-slate-50">Prio. Score</th>
+                      <th className="p-4 bg-slate-50">Status</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {queueList.map((entry, idx) => (
-                      <tr key={entry.id} className={`transition hover:bg-slate-50 ${entry.status === 'CALLED' ? 'bg-orange-50' : ''}`}>
-                        <td className="p-4 font-mono text-slate-400 text-sm">
-                          {entry.status === 'CALLED' ? '-' : idx + 1}
+                      <tr key={entry.id} className={`transition hover:bg-slate-50 ${entry.status === 'CALLED' ? 'bg-amber-50/50' : ''}`}>
+                        <td className="p-4 font-mono text-slate-500 font-bold">
+                          {entry.status === 'CALLED' ? '-' : (idx + 1).toString().padStart(3, '0')}
                         </td>
-                        <td className="p-4 font-medium text-slate-800">{entry.user.name}</td>
+                        <td className="p-4 font-bold text-slate-800">{entry.user.name}</td>
                         <td className="p-4">
-                          <span className={`px-2 py-1 rounded text-xs font-bold ${
-                            entry.ticketClass === 'FIRST' ? 'bg-purple-100 text-purple-700' :
-                            entry.ticketClass === 'BUSINESS' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'
+                          <span className={`px-3 py-1 rounded-md text-xs font-black uppercase tracking-wide border ${
+                            entry.ticketClass === 'FIRST' ? 'bg-purple-50 text-purple-700 border-purple-200' :
+                            entry.ticketClass === 'BUSINESS' ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-slate-100 text-slate-600 border-slate-200'
                           }`}>
-                            {entry.ticketClass}
+                            {entry.ticketClass.substring(0,4)}
                           </span>
-                          {entry.isSpecialNeeds && <span className="ml-2" title="Special Assistance">♿</span>}
+                          {entry.isSpecialNeeds && <span className="ml-2 text-lg" title="Special Assistance Required">♿</span>}
                         </td>
-                        <td className="p-4 font-bold text-indigo-600">{entry.priorityScore}</td>
-                        <td className="p-4 text-xs font-bold uppercase tracking-wider">
-                          {entry.status === 'CALLED' ? <span className="text-orange-600 animate-pulse">Serving</span> : <span className="text-slate-400">Waiting</span>}
+                        <td className="p-4 font-bold text-sky-700">{entry.priorityScore}</td>
+                        <td className="p-4 text-xs font-black uppercase tracking-wider">
+                          {entry.status === 'CALLED' ? <span className="text-amber-600 animate-pulse bg-amber-100 px-2 py-1 rounded">Summoned</span> : <span className="text-slate-400 bg-slate-100 px-2 py-1 rounded">Queued</span>}
                         </td>
                       </tr>
                     ))}
@@ -364,23 +337,32 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          {/* Right Column (Controls - Unchanged) */}
-          <div className="space-y-6">
-            <div className="bg-white p-6 rounded-lg shadow border-l-4 border-indigo-500">
-              <h2 className="text-lg font-bold mb-2 text-slate-800">Simulation Engine</h2>
-              <div className="grid grid-cols-2 gap-3">
-                <button onClick={() => handleSimulate(5)} disabled={simLoading} className="bg-indigo-50 text-indigo-700 hover:bg-indigo-100 py-2 rounded font-bold text-sm transition">+5 Pax</button>
-                <button onClick={() => handleSimulate(20)} disabled={simLoading} className="bg-indigo-600 text-white hover:bg-indigo-700 py-2 rounded font-bold text-sm transition shadow">+20 Peak</button>
+          <div className="space-y-8">
+             {/* Simulation Controls with professional names */}
+            <div className="bg-white p-6 rounded-xl shadow-sm border-t-4 border-indigo-500">
+              <h2 className="text-sm font-bold mb-4 text-slate-700 uppercase tracking-wide">Traffic Simulation</h2>
+              <div className="grid grid-cols-1 gap-3">
+                <button onClick={() => handleSimulate(5)} disabled={simLoading} className="bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 py-3 rounded-lg font-bold text-sm transition uppercase tracking-wide">Inject Standard Load (5 Pax)</button>
+                <button onClick={() => handleSimulate(20)} disabled={simLoading} className="bg-indigo-600 text-white hover:bg-indigo-700 py-3 rounded-lg font-black text-sm transition shadow uppercase tracking-wide">Inject Peak Load (20 Pax)</button>
               </div>
             </div>
 
-            <div className="bg-white p-6 rounded-lg shadow">
-              <h3 className="font-bold text-slate-700 mb-4">Add Flight</h3>
-              <form onSubmit={handleAddFlight} className="space-y-3">
-                <input className="w-full border border-slate-300 p-2 rounded text-sm focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="Code (MH370)" value={newFlight.flightCode} onChange={e => setNewFlight({...newFlight, flightCode: e.target.value})} required />
-                <input className="w-full border border-slate-300 p-2 rounded text-sm focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="Destination" value={newFlight.destination} onChange={e => setNewFlight({...newFlight, destination: e.target.value})} required />
-                <input className="w-full border border-slate-300 p-2 rounded text-sm focus:ring-2 focus:ring-indigo-500 outline-none" type="datetime-local" onChange={e => setNewFlight({...newFlight, departureTime: e.target.value})} required />
-                <button className="w-full bg-slate-800 hover:bg-slate-900 text-white py-2 rounded font-bold text-sm transition shadow">Create Schedule</button>
+            <div className="bg-white p-6 rounded-xl shadow-sm border-t-4 border-slate-700">
+              <h3 className="text-sm font-bold text-slate-700 mb-4 uppercase tracking-wide">Flight Schedule Management</h3>
+              <form onSubmit={handleAddFlight} className="space-y-4">
+                <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Flight Designator</label>
+                    <input className="w-full border border-slate-300 p-3 rounded-lg text-sm font-bold text-slate-700 focus:ring-2 focus:ring-sky-500 outline-none bg-slate-50" placeholder="e.g., MH370" value={newFlight.flightCode} onChange={e => setNewFlight({...newFlight, flightCode: e.target.value})} required />
+                </div>
+                <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Destination Airport</label>
+                    <input className="w-full border border-slate-300 p-3 rounded-lg text-sm font-bold text-slate-700 focus:ring-2 focus:ring-sky-500 outline-none bg-slate-50" placeholder="City or Airport Code" value={newFlight.destination} onChange={e => setNewFlight({...newFlight, destination: e.target.value})} required />
+                </div>
+                 <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Scheduled Departure (UTC)</label>
+                    <input className="w-full border border-slate-300 p-3 rounded-lg text-sm font-bold text-slate-700 focus:ring-2 focus:ring-sky-500 outline-none bg-slate-50 font-mono" type="datetime-local" onChange={e => setNewFlight({...newFlight, departureTime: e.target.value})} required />
+                </div>
+                <button className="w-full bg-slate-800 hover:bg-slate-900 text-white py-4 rounded-lg font-black text-sm transition shadow uppercase tracking-widest mt-2">Publish Schedule</button>
               </form>
             </div>
           </div>

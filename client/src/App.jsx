@@ -6,9 +6,8 @@ import PassengerView from './pages/PassengerView';
 import AdminDashboard from './pages/AdminDashboard';
 import { Toaster } from 'react-hot-toast';
 
-// Simple Route Guard
+// Route Guard component to handle role-based access
 const PrivateRoute = ({ children, role }) => {
-  // FIX: Read from sessionStorage (matches Login.jsx)
   const userStr = sessionStorage.getItem('user');
   
   if (!userStr) {
@@ -17,9 +16,8 @@ const PrivateRoute = ({ children, role }) => {
 
   const user = JSON.parse(userStr);
 
-  // Role Check (Case Insensitive)
+  // Enforce role-based access control
   if (role && user.role.toUpperCase() !== role.toUpperCase()) {
-    // If passenger tries to access admin, send them to passenger view
     return <Navigate to="/passenger" replace />;
   }
 
@@ -28,7 +26,8 @@ const PrivateRoute = ({ children, role }) => {
 
 function App() {
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans">
+    // Updated background for a cleaner, more professional feel
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 text-slate-900 font-sans">
       <BrowserRouter>
         <Routes>
           {/* Public Routes */}
@@ -50,7 +49,12 @@ function App() {
           } />
         </Routes>
       </BrowserRouter>
-      <Toaster position="top-center" />
+      <Toaster position="top-center" toastOptions={{
+        style: {
+          background: '#334155',
+          color: '#fff',
+        },
+      }}/>
     </div>
   );
 }

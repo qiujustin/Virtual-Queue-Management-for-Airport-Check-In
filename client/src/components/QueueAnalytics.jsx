@@ -6,27 +6,26 @@ import {
 
 export default function QueueAnalytics({ queueList }) {
   
-  // 1. Prepare Data for Pie Chart (Ticket Class Distribution)
+  // Format data for Ticket Class Distribution (Pie Chart)
   const classData = [
     { name: 'First', value: queueList.filter(p => p.ticketClass === 'FIRST').length },
     { name: 'Business', value: queueList.filter(p => p.ticketClass === 'BUSINESS').length },
     { name: 'Economy', value: queueList.filter(p => p.ticketClass === 'ECONOMY').length },
-  ].filter(item => item.value > 0); // Hide empty slices
+  ].filter(item => item.value > 0);
 
-  const COLORS = ['#7e22ce', '#3b82f6', '#94a3b8']; // Purple, Blue, Gray
+  const COLORS = ['#7e22ce', '#3b82f6', '#94a3b8']; 
 
-  // 2. Prepare Data for Bar Chart (Wait Time Estimates)
-  // We take the top 10 passengers to keep the chart readable
+  // Format data for Wait Time Estimates (Bar Chart) - Top 10 only
   const waitTimeData = queueList.slice(0, 10).map((entry, index) => ({
-    name: entry.user.name.split(' ')[0], // First name only
-    waitTime: entry.estimatedWaitTime || (index + 1) * 3, // Fallback if 0
+    name: entry.user.name.split(' ')[0], 
+    waitTime: entry.estimatedWaitTime || (index + 1) * 3, 
     priority: entry.priorityScore
   }));
 
   if (queueList.length === 0) {
     return (
       <div className="bg-white p-6 rounded-lg shadow text-center text-slate-400">
-        No data for analytics. Start a simulation!
+        No data for analytics.
       </div>
     );
   }
@@ -34,10 +33,9 @@ export default function QueueAnalytics({ queueList }) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
       
-      {/* CHART 1: Passenger Composition */}
+      {/* Passenger Composition Chart */}
       <div className="bg-white p-6 rounded-lg shadow border border-slate-100">
         <h3 className="font-bold text-slate-700 mb-4">Passenger Composition</h3>
-        {/* FIX: Use explicit style height instead of relying only on className */}
         <div style={{ width: '100%', height: 300 }}> 
           <ResponsiveContainer>
             <PieChart>
@@ -62,10 +60,9 @@ export default function QueueAnalytics({ queueList }) {
         </div>
       </div>
 
-      {/* CHART 2: Priority vs Wait Time */}
+      {/* Priority vs Wait Time Chart */}
       <div className="bg-white p-6 rounded-lg shadow border border-slate-100">
         <h3 className="font-bold text-slate-700 mb-4">Top 10: Priority Score vs Wait Time</h3>
-        {/* FIX: Use explicit style height */}
         <div style={{ width: '100%', height: 300 }}>
           <ResponsiveContainer>
             <BarChart data={waitTimeData}>
