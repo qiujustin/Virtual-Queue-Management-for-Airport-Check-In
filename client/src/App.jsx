@@ -8,9 +8,21 @@ import { Toaster } from 'react-hot-toast';
 
 // Simple Route Guard
 const PrivateRoute = ({ children, role }) => {
-  const user = JSON.parse(localStorage.getItem('user'));
-  if (!user) return <Navigate to="/" />;
-  if (role && user.role !== role) return <Navigate to="/" />; // Redirect unauthorized
+  // FIX: Read from sessionStorage (matches Login.jsx)
+  const userStr = sessionStorage.getItem('user');
+  
+  if (!userStr) {
+    return <Navigate to="/login" replace />;
+  }
+
+  const user = JSON.parse(userStr);
+
+  // Role Check (Case Insensitive)
+  if (role && user.role.toUpperCase() !== role.toUpperCase()) {
+    // If passenger tries to access admin, send them to passenger view
+    return <Navigate to="/passenger" replace />;
+  }
+
   return children;
 };
 
@@ -19,9 +31,12 @@ function App() {
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans">
       <BrowserRouter>
         <Routes>
+          {/* Public Routes */}
           <Route path="/" element={<Login />} />
+          <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           
+          {/* Protected Routes */}
           <Route path="/passenger" element={
             <PrivateRoute>
               <PassengerView />
