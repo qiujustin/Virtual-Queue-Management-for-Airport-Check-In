@@ -371,6 +371,26 @@ app.post('/api/admin/complete-service', authenticateToken, requireAdmin, async (
   }
 });
 
+app.post('/api/admin/noshow', authenticateToken, requireAdmin, async (req, res) => {
+  const { entryId } = req.body;
+
+  try {
+    await prisma.queueEntry.update({
+      where: { id: entryId },
+      data: { 
+        status: 'NOSHOW', // distinct status
+        assignedCounter: null, // clear counter
+        serviceCompletedAt: new Date() // mark end time
+      }
+    });
+
+    io.emit('queue_update');
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to mark No-Show" });
+  }
+});
+
 // --- SIMULATION ENGINE ---
 
 app.post('/api/admin/simulate', authenticateToken, requireAdmin, async (req, res) => {

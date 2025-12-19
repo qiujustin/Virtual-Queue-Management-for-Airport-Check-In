@@ -10,8 +10,12 @@ export default function PassengerView() {
   const [flights, setFlights] = useState([]);
   const [myQueue, setMyQueue] = useState(null);
   const [loading, setLoading] = useState(true);
-  const navigate = useNavigate();
+  
+  // NEW: Ticket Customization State
+  const [ticketClass, setTicketClass] = useState("ECONOMY");
+  const [isSpecialNeeds, setIsSpecialNeeds] = useState(false);
 
+  const navigate = useNavigate();
   const getToken = () => sessionStorage.getItem('token');
 
   const handleLogout = () => {
@@ -21,7 +25,6 @@ export default function PassengerView() {
     navigate('/login');
   };
 
-  // Wrapped in useCallback so it can be safely used in useEffect dependencies
   const fetchData = useCallback(async () => {
     try {
       const flightRes = await axios.get('http://localhost:3001/api/flights');
@@ -39,18 +42,12 @@ export default function PassengerView() {
       console.error(err);
       setLoading(false);
     }
-  }, []); // Empty dependency array as it doesn't rely on changing state
+  }, []);
 
   useEffect(() => {
     fetchData();
-
-    // Socket Listener for General Updates
-    socket.on('queue_update', () => {
-      console.log("Queue updated event received");
-      fetchData();
-    });
-
-    // Socket Listener for Personal Notifications
+    socket.on('queue_update', () => fetchData());
+    
     const userStr = sessionStorage.getItem('user');
     if (userStr) {
       const user = JSON.parse(userStr);
@@ -62,14 +59,13 @@ export default function PassengerView() {
             style: { background: '#4ade80', color: '#fff', fontWeight: 'bold' },
           });
           if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
-          fetchData(); // Refresh immediately upon being called
+          fetchData(); 
         }
       });
     }
 
     return () => {
       socket.off('queue_update');
-      const userStr = sessionStorage.getItem('user');
       if (userStr) {
         const user = JSON.parse(userStr);
         socket.off(`passenger:${user.id}`);
@@ -86,14 +82,20 @@ export default function PassengerView() {
     }
 
     try {
-      const payload = { flightId, ticketClass: "ECONOMY", isSpecialNeeds: false };
+      // Use state values instead of hardcoded ones
+      const payload = { 
+        flightId, 
+        ticketClass, 
+        isSpecialNeeds 
+      };
+
       const res = await axios.post('http://localhost:3001/api/queue/join', payload, {
         headers: { Authorization: `Bearer ${token}` }
       });
 
       if (res.data.success) {
-        toast.success("Joined Queue Successfully!");
-        fetchData(); // Trigger immediate refresh
+        toast.success("Checked In Successfully!");
+        fetchData(); 
       }
     } catch (err) {
       toast.error(err.response?.data?.error || "Failed to join queue");
@@ -106,14 +108,48 @@ export default function PassengerView() {
     <div className="min-h-screen bg-slate-100 p-6">
       <div className="max-w-4xl mx-auto space-y-8">
         
+        {/* HEADER */}
         <div className="flex justify-between items-center bg-white p-6 rounded-lg shadow-sm">
-          <h1 className="text-2xl font-bold text-slate-800">✈️ Available Flights</h1>
+          <h1 className="text-2xl font-bold text-slate-800">✈️ Airport Check-In Kiosk</h1>
           <div className="flex items-center gap-4">
-            {myQueue && <div className="hidden md:block bg-green-100 text-green-800 px-4 py-2 rounded-full font-semibold animate-pulse text-sm">Queue Active</div>}
             <button onClick={handleLogout} className="bg-red-50 text-red-600 hover:bg-red-100 px-4 py-2 rounded-lg font-bold text-sm transition">Logout</button>
           </div>
         </div>
 
+        {/* TICKET CONFIGURATION CARD (Simulation Feature) */}
+        {!myQueue && (
+          <div className="bg-white p-6 rounded-lg shadow-sm border-l-4 border-indigo-500">
+            <h2 className="text-lg font-bold text-slate-700 mb-4">🎫 Your Ticket Details</h2>
+            <div className="flex flex-col md:flex-row gap-4 items-end">
+              <div className="flex-1 w-full">
+                <label className="block text-sm font-medium text-slate-600 mb-1">Ticket Class</label>
+                <select 
+                  className="w-full border border-slate-300 p-2 rounded focus:ring-2 focus:ring-indigo-500 outline-none"
+                  value={ticketClass}
+                  onChange={(e) => setTicketClass(e.target.value)}
+                >
+                  <option value="ECONOMY">Economy Class</option>
+                  <option value="BUSINESS">Business Class</option>
+                  <option value="FIRST">First Class</option>
+                </select>
+              </div>
+              
+              <div className="flex-1 w-full">
+                <label className="flex items-center gap-2 cursor-pointer bg-slate-50 p-2 rounded border border-slate-200 h-[42px]">
+                  <input 
+                    type="checkbox" 
+                    className="w-5 h-5 text-indigo-600 rounded focus:ring-indigo-500"
+                    checked={isSpecialNeeds}
+                    onChange={(e) => setIsSpecialNeeds(e.target.checked)}
+                  />
+                  <span className="text-sm font-medium text-slate-700">Require Special Assistance (Wheelchair/Elderly)</span>
+                </label>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ACTIVE STATUS CARD */}
         {myQueue && (
           <div className="bg-indigo-600 text-white p-8 rounded-2xl shadow-xl transform transition-all">
             <div className="flex flex-col md:flex-row justify-between items-center text-center md:text-left gap-6">
@@ -122,20 +158,28 @@ export default function PassengerView() {
                   {myQueue.status === 'CALLED' ? "PROCEED TO COUNTER" : "You are in line"}
                 </h2>
                 <p className="opacity-90 text-lg">Flight: {myQueue.flight?.flightCode || "Loading..."}</p>
+                <div className="mt-2 inline-flex gap-2">
+                  <span className="bg-white/20 px-3 py-1 rounded text-sm font-bold">{myQueue.ticketClass}</span>
+                  {myQueue.isSpecialNeeds && <span className="bg-yellow-400/90 text-black px-3 py-1 rounded text-sm font-bold">Special Assist</span>}
+                </div>
               </div>
+              
               <div className="bg-white/20 p-6 rounded-xl backdrop-blur-sm min-w-[200px]">
                 <div className="text-sm uppercase tracking-wider opacity-80 mb-1">Your Position</div>
                 <div className="text-5xl font-black">
                   {myQueue.status === 'CALLED' ? "NOW" : `#${myQueue.position}`}
                 </div>
                 {myQueue.status !== 'CALLED' && (
-                  <div className="mt-2 text-sm font-medium bg-white/10 py-1 px-2 rounded">Est. Wait: {myQueue.estimatedWaitTime} mins</div>
+                  <div className="mt-2 text-sm font-medium bg-white/10 py-1 px-2 rounded">
+                    Est. Wait: {myQueue.estimatedWaitTime} mins
+                  </div>
                 )}
               </div>
             </div>
           </div>
         )}
 
+        {/* FLIGHT LIST */}
         <div className="grid md:grid-cols-2 gap-6">
           {flights.map(flight => (
             <div key={flight.id} className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition border border-slate-200">
@@ -148,12 +192,16 @@ export default function PassengerView() {
                   {new Date(flight.departureTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                 </span>
               </div>
+              
               <div className="pt-4 border-t border-slate-100">
                 <button
                   onClick={() => handleJoinQueue(flight.id)}
                   disabled={!!myQueue} 
                   className={`w-full py-3 px-4 rounded-lg font-bold transition flex items-center justify-center gap-2
-                    ${myQueue ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-md hover:shadow-lg active:scale-95'}`}
+                    ${myQueue 
+                      ? 'bg-slate-200 text-slate-400 cursor-not-allowed' 
+                      : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-md hover:shadow-lg active:scale-95'
+                    }`}
                 >
                   {myQueue ? "Checked In / In Queue" : "Check-In & Join Queue"}
                 </button>
