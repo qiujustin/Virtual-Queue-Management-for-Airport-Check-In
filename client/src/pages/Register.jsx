@@ -8,8 +8,7 @@ export default function Register() {
     name: '', 
     username: '', 
     email: '', 
-    password: '', 
-    role: 'PASSENGER' 
+    password: ''
   });
   
   const navigate = useNavigate();
@@ -18,10 +17,9 @@ export default function Register() {
     e.preventDefault();
     try {
       await axios.post('http://localhost:3001/api/auth/register', formData);
-      toast.success("Account created! Please login.");
-      navigate('/');
+      toast.success("Account created successfully! Please login.");
+      navigate('/login');
     } catch (err) {
-      // Improved error handling to show the backend message (e.g., "Username taken")
       const message = err.response?.data?.error || "Registration Failed";
       toast.error(message);
     }
@@ -29,65 +27,60 @@ export default function Register() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-100">
-      <div className="bg-white p-8 rounded shadow-md w-96">
-        <h1 className="text-2xl font-bold mb-6 text-center text-blue-900">Register</h1>
+      <div className="bg-white p-8 rounded-lg shadow-xl w-96 border border-slate-200">
+        <h1 className="text-3xl font-bold mb-6 text-center text-slate-800">Register</h1>
         <form onSubmit={handleRegister} className="space-y-4">
           
-          {/* Full Name Input */}
-          <input 
-            placeholder="Full Name" 
-            className="w-full border p-2 rounded"
-            value={formData.name}
-            onChange={e => setFormData({...formData, name: e.target.value})} 
-            required 
-          />
+          <div>
+            <label className="block text-sm font-medium text-slate-600">Full Name</label>
+            <input 
+              type="text" 
+              className="w-full border border-slate-300 p-2 rounded focus:ring-2 focus:ring-indigo-500 outline-none"
+              value={formData.name}
+              onChange={e => setFormData({...formData, name: e.target.value})} 
+              required 
+            />
+          </div>
 
-          {/* Username Input */}
-          <input 
-            type="text" 
-            placeholder="Username (e.g. pilot123)" 
-            className="w-full border p-2 rounded"
-            value={formData.username}
-            onChange={e => setFormData({...formData, username: e.target.value})} 
-            required 
-          />
+          <div>
+            <label className="block text-sm font-medium text-slate-600">Username</label>
+            <input 
+              type="text" 
+              className="w-full border border-slate-300 p-2 rounded focus:ring-2 focus:ring-indigo-500 outline-none"
+              value={formData.username}
+              onChange={e => setFormData({...formData, username: e.target.value})} 
+              required 
+            />
+          </div>
 
-          {/* Email Input */}
-          <input 
-            type="email" 
-            placeholder="Email" 
-            className="w-full border p-2 rounded"
-            value={formData.email}
-            onChange={e => setFormData({...formData, email: e.target.value})} 
-            required 
-          />
+          <div>
+            <label className="block text-sm font-medium text-slate-600">Email</label>
+            <input 
+              type="email" 
+              className="w-full border border-slate-300 p-2 rounded focus:ring-2 focus:ring-indigo-500 outline-none"
+              value={formData.email}
+              onChange={e => setFormData({...formData, email: e.target.value})} 
+              required 
+            />
+          </div>
 
-          {/* Password Input */}
-          <input 
-            type="password" 
-            placeholder="Password" 
-            className="w-full border p-2 rounded"
-            value={formData.password}
-            onChange={e => setFormData({...formData, password: e.target.value})} 
-            required 
-          />
+          <div>
+            <label className="block text-sm font-medium text-slate-600">Password</label>
+            <input 
+              type="password" 
+              className="w-full border border-slate-300 p-2 rounded focus:ring-2 focus:ring-indigo-500 outline-none"
+              value={formData.password}
+              onChange={e => setFormData({...formData, password: e.target.value})} 
+              required 
+            />
+          </div>
 
-          {/* Role Selection */}
-          <select 
-            className="w-full border p-2 rounded"
-            value={formData.role}
-            onChange={e => setFormData({...formData, role: e.target.value})}
-          >
-            <option value="PASSENGER">Passenger</option>
-            <option value="ADMIN">Airport Staff (Admin)</option>
-          </select>
-
-          <button type="submit" className="w-full bg-green-600 text-white p-2 rounded font-bold">
+          <button type="submit" className="w-full bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg font-bold transition shadow-md mt-4">
             Create Account
           </button>
         </form>
-        <p className="mt-4 text-center text-sm">
-          Already have an account? <Link to="/" className="text-blue-600">Login</Link>
+        <p className="mt-6 text-center text-sm text-slate-600">
+          Already have an account? <Link to="/login" className="text-indigo-600 font-bold hover:underline">Login here</Link>
         </p>
       </div>
     </div>

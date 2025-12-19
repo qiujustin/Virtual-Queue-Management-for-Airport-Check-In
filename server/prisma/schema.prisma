@@ -30,26 +30,21 @@ model Flight {
 }
 
 model QueueEntry {
-  id        String      @id @default(uuid())
-  userId    String
-  flightId  String
-  status    QueueStatus @default(WAITING)
+  id                String   @id @default(uuid())
+  userId            String
+  flightId          String
+  ticketClass       String   // ECONOMY, BUSINESS, FIRST
+  isSpecialNeeds    Boolean  @default(false)
+  priorityScore     Int
+  status            String   // WAITING, CALLED, COMPLETED, NOSHOW
+  assignedCounter   String?  
   
-  // Priority Algo Fields
-  priorityScore Int       @default(0)
-  ticketClass   TicketClass @default(ECONOMY)
-  isSpecialNeeds Boolean  @default(false)
-  
-  joinedAt  DateTime @default(now())
-  
-  // [NEW] Timestamps for Smart Metrics
-  serviceStartedAt   DateTime? // When Admin clicked "Call Next"
-  serviceCompletedAt DateTime? // When Admin clicked "Call Next" for the person AFTER this one
+  joinedAt          DateTime @default(now())
+  serviceStartedAt  DateTime?
+  serviceCompletedAt DateTime?
 
   user   User   @relation(fields: [userId], references: [id])
   flight Flight @relation(fields: [flightId], references: [id])
-
-  @@index([status, priorityScore])
 }
 
 enum Role {
